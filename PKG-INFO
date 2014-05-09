@@ -1,0 +1,11 @@
+Metadata-Version: 1.0
+Name: RSeQC
+Version: 2.3.9
+Summary: RNA-seq QC Package
+Home-page: http://code.google.com/p/rseqc/
+Author: Liguo Wang
+Author-email: wangliguo78@gmail.com
+License: UNKNOWN
+Description: UNKNOWN
+Platform: Linux
+Platform: MacOS
