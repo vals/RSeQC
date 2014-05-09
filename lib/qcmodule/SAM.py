@@ -2,7 +2,8 @@
 '''manipulate BAM/SAM file.'''
 
 #import built-in modules
-import os,sys
+import os
+import sys
 import re
 import string
 from optparse import OptionParser
@@ -968,9 +969,9 @@ class QCSAM:
         print >>sys.stderr, "Intronic reads:\t" + str(intronReads) 
         print >>sys.stderr, "Splicing reads:\t" + str(splicedReads)
         print >>sys.stderr, "Intergenic reads:\t" + str(intergenicReads)
-        
+
         print >>sys.stderr,"writing R script ...",
-        totalReads=float(totalReads)
+        totalReads = float(totalReads)
         print >>R_OUT, "pdf('%s')" % rpdf
         print >>R_OUT, "dat=c(%d,%d,%d,%d)" % (exonReads,splicedReads,intronReads,intergenicReads)
         print >>R_OUT, "lb=c('exon(%.2f)','junction(%.2f)','intron(%.2f)','intergenic(%.2f)')" % (exonReads/totalReads,splicedReads/totalReads,intronReads/totalReads,intergenicReads/totalReads)
@@ -978,7 +979,7 @@ class QCSAM:
         print >>R_OUT, "dev.off()"
         print >>sys.stderr, "Done."
 
-    def assess3PrimeBias(self,refbed,oufile=None):
+    def assess3PrimeBias(self, refbed, outfile=None):
         '''Calculates coverage oover gene bodies aligned at the 3' end of the gene model.'''
         if refbed is None:
             print >>sys.stderr,"You must specify a bed file representing gene model\n"
@@ -992,12 +993,116 @@ class QCSAM:
         OUT1 = open(outfile1,'w')
         OUT2 = open(outfile2,'w')
 
+        ranges = {}
+        totalReads = 0
+        fragment_num = 0  # Splice reads will be counted twice
+        rpkm = {}
+
+        # Read SAM 
+        print >>sys.stderr, "reading " + self.fileName + '...',
+        for line in self.f:
+            if line.startswith("@"):continue
+            fields=line.rstrip('\n ').split()
+            flagCode=string.atoi(fields[1])
+            if (flagCode & 0x0004) != 0: continue  # skip unmapped reads
+            totalReads += 1
+
+            chrom = fields[2].upper()
+            chromStart = string.atoi(fields[3]) - 1
+            # Example: "9M4721N63M3157N8M" return ['9', '4721', '63', '3157', '8']
+            comb = [int(i) for i in ParseSAM._splicedHit_pat.findall(fields[5])]
+            fragment_num += (len(comb) + 1) / 2
+            blockStart = []
+            blockSize = []
+
+            for i in range(0,len(comb),2):
+                blockStart.append(chromStart + sum(comb[:i]) )
+
+            for i in range(0,len(comb),2):
+                blockSize.append(comb[i])
+
+            for start, size in zip(blockStart, blockSize):
+                if chrom not in ranges:
+                    ranges[chrom] = Intersecter()
+
+                ranges[chrom].add_interval(Interval(start, start + size))
+
+        print >>sys.stderr, "Done"
+
+        print >>sys.stderr, "calculating coverage over gene body ..."
+        coverage = collections.defaultdict(int)
+        flag = 0
+        for line in open(refbed, 'r'):
+            try:
+                if line.startswith(('#', 'track', 'browser')):
+                    continue
+
+                # Parse fields from gene table
+                fields    = line.split()
+                chrom     = fields[0].upper()
+                tx_start  = int(fields[1])
+                tx_end    = int(fields[2])
+                geneName  = fields[3]
+                strand    = fields[5]
+                
+                exon_starts = map( int, fields[11].rstrip( ',\n' ).split( ',' ) )
+                exon_starts = map((lambda x: x + tx_start ), exon_starts)
+                exon_ends = map( int, fields[10].rstrip( ',\n' ).split( ',' ) )
+                exon_ends = map((lambda x, y: x + y ), exon_starts, exon_ends);   
+
+            except:
+                print >>sys.stderr, "[NOTE:input bed must be 12-column] skipped this line: " + line,
+                continue
+
+            gene_all_base = []
+            percentile_base = []
+            mRNA_len = 0
+            flag = 0
+            for start, end in zip(exon_starts, exon_ends):
+                gene_all_base.extend(range(start + 1, end + 1))  # 0-based coordinates on genome
+                mRNA_len = len(gene_all_base)
+                if mRNA_len < 100:
+                    flag = 1
+                    break
+
+            if flag == 1:
+                continue
+
+            if strand == '-':
+                gene_all_base.sort(reverse=True)  # deal with gene on minus stand
+
+            else:
+                gene_all_base.sort(reverse=False)
+
+            percentile_base = mystat.percentile_list(gene_all_base)  # get 101 points from each gene's coordinates
+            
+            for i in range(0, len(percentile_base)):
+                if chrom in ranges:
+                    coverage[i] += len(ranges[chrom].find(percentile_base[i], percentile_base[i] + 1))
+
+        x_coord = []
+        y_coord = []
+
+        print >>OUT2, "Total reads: " + str(totalReads)
+        print >>OUT2, "Fragment number: " + str(fragment_num)
+        print >>OUT2, "percentile\tcount"
+        for i in coverage:
+            x_coord.append(str(i))
+            y_coord.append(str(coverage[i]))
+            print >>OUT2, str(i) + '\t' + str(coverage[i])
+
+        print >>OUT1, "pdf('geneBody_coverage.pdf')"
+        print >>OUT1, "x=0:100"
+        print >>OUT1, "y=c(" + ','.join(y_coord) + ')'
+        print >>OUT1, "plot(x,y,xlab=\"percentile of gene body (5'->3')\",ylab='read number',type='s')"
+        print >>OUT1, "dev.off()"
+
         # Not implemented yet
         raise NotImplementedError()
-    
-    def coverageGeneBody(self,refbed,outfile=None):
-        '''Calculate reads coverage over gene body, from 5'to 3'. each gene will be equally divied
-        into 100 regions'''
+
+    def coverageGeneBody(self, refbed, outfile=None):
+        '''Calculate reads coverage over gene body, from 5'to 3'. each gene
+        will be equally divied into 100 regions'''
         if refbed is None:
             print >>sys.stderr,"You must specify a bed file representing gene model\n"
             exit(0)
@@ -1007,23 +1112,24 @@ class QCSAM:
         else:
             outfile1 = outfile + ".geneBodyCoverage_plot.r"
             outfile2 = outfile + ".geneBodyCoverage.txt"
-        OUT1 = open(outfile1,'w')
-        OUT2 = open(outfile2,'w')
 
-        ranges={}
-        totalReads=0
-        fragment_num=0      #splice reads will be counted twice
-        rpkm={}
-        
+        OUT1 = open(outfile1, 'w')
+        OUT2 = open(outfile2, 'w')
+
+        ranges = {}
+        totalReads = 0
+        fragment_num = 0  # Splice reads will be counted twice
+        rpkm = {}
+
         # Read SAM 
-        print >>sys.stderr, "reading "+ self.fileName + '...',
+        print >>sys.stderr, "reading " + self.fileName + '...',
         for line in self.f:
             if line.startswith("@"):continue
             fields=line.rstrip('\n ').split()
             flagCode=string.atoi(fields[1])
-            if (flagCode & 0x0004) != 0: continue       #skip unmapped reads
+            if (flagCode & 0x0004) != 0: continue  # skip unmapped reads
             totalReads += 1
-            
+
             chrom = fields[2].upper()
             chromStart = string.atoi(fields[3]) - 1
             # Example: "9M4721N63M3157N8M" return ['9', '4721', '63', '3157', '8']
@@ -1031,17 +1137,18 @@ class QCSAM:
             fragment_num += (len(comb) +1) / 2
             blockStart = []
             blockSize = []
-            
+
             for i in range(0,len(comb),2):
                 blockStart.append(chromStart + sum(comb[:i]) )
-                
+
             for i in range(0,len(comb),2):
                 blockSize.append(comb[i])
-            
-            for st,size in zip(blockStart, blockSize):
+
+            for start, size in zip(blockStart, blockSize):
                 if chrom not in ranges:
                     ranges[chrom] = Intersecter()
-                ranges[chrom].add_interval( Interval( st, st+size ) )
+
+                ranges[chrom].add_interval(Interval(start, start + size))
 
         print >>sys.stderr, "Done"
 

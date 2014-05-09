@@ -139,13 +139,16 @@ def percentile(N, percent, key=lambda x:x):
     """
     if not N:
         return None
+
     k = (len(N)-1) * percent/100.0
     f = math.floor(k)
     c = math.ceil(k)
     if f == c:
         return key(N[int(k)])
+
     d0 = key(N[int(f)]) * (c-k)
     d1 = key(N[int(c)]) * (k-f)
+
     return d0+d1
 	
 def percentile_list(N):
@@ -157,13 +160,15 @@ def percentile_list(N):
 	if not N:return None
 	per_list=[]
 	for i in range(0,101):
-		k = (len(N)-1) * i/100.0
+		k = (len(N) - 1) * i / 100.0
 		f = math.floor(k)
 		c = math.ceil(k)
 		if f == c:
-			per_list.append( int(N[int(k)])  )
+			per_list.append(int(N[int(k)]))
+	
 		else:
-			d0 = N[int(f)] * (c-k)
-			d1 = N[int(c)] * (k-f)
-			per_list.append(int(round(d0+d1)))	
+			d0 = N[int(f)] * (c - k)
+			d1 = N[int(c)] * (k - f)
+			per_list.append(int(round(d0 + d1)))	
+	
 	return per_list
