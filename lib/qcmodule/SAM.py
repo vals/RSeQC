@@ -977,11 +977,26 @@ class QCSAM:
 		print >>R_OUT, "pie(dat,labels=lb,col=rainbow(4),clockwise=TRUE,main='Total reads = %d')" % int(totalReads)
 		print >>R_OUT, "dev.off()"
 		print >>sys.stderr, "Done."
-	
+
+	def assess3PrimeBias(self,refbed,oufile=None):
+		'''Calculates coverage oover gene bodies aligned at the 3' end of the gene model.'''
+		if refbed is None:
+			print >>sys.stderr,"You must specify a bed file representing gene model\n"
+			exit(0)
+		if outfile is None:
+			outfile1 = self.fileName + ".3PrimeBias_plot.r"
+			outfile2 =  self.fileName + ".3PrimeBias.txt"
+		else:
+			outfile1 = outfile + ".3PrimeBias_plot.r"
+			outfile2 = outfile + ".3PrimeBias.txt"
+		OUT1 = open(outfile1,'w')
+		OUT2 = open(outfile2,'w')
+
+		raise NotImplementedError()
 	
 	def coverageGeneBody(self,refbed,outfile=None):
 		'''Calculate reads coverage over gene body, from 5'to 3'. each gene will be equally divied
-		into 100 regsions'''
+		into 100 regions'''
 		if refbed is None:
 			print >>sys.stderr,"You must specify a bed file representing gene model\n"
 			exit(0)
